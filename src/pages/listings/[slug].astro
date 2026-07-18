@@ -7,6 +7,7 @@ import ContactModal from '../../components/ContactModal.astro';
 import { PortableText } from 'astro-portabletext';
 import {
   type Listing,
+  LISTING_FIELDS,
   iconSvg,
   detailIconName,
   categoryIconName,
@@ -16,9 +17,6 @@ import {
   categoryLabel,
   formatDate,
 } from '../../lib/listing';
-
-const LISTING_FIELDS = `_id, title, slug, description, price, currency, status, images, category,
-  details[]{ _key, label, value, valueType, valueNumber, unit, valueBoolean, valueDate }, listingDate`;
 
 export async function getStaticPaths() {
   const slugs = await client.fetch<{ slug: string }[]>(

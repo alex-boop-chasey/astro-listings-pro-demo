@@ -27,6 +27,12 @@ export interface Listing {
   listingDate?: string;
 }
 
+// --- Shared GROQ projection --------------------------------------------------
+// The full field set every listing query needs. Kept in one place so the
+// projection can't drift between index.astro, [slug].astro and compare.astro.
+export const LISTING_FIELDS = `_id, title, slug, description, price, currency, status, images, category,
+  details[]{ _key, label, value, valueType, valueNumber, unit, valueBoolean, valueDate }, listingDate`;
+
 // --- Formatting helpers ------------------------------------------------------
 
 export function formatPrice(price: number, currency: string): string {
