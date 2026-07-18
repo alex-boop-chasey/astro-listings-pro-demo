@@ -1,0 +1,261 @@
+---
+export const prerender = false;
+
+import '../styles/global.css';
+import { client } from '../sanity/lib/client';
+import { urlFor } from '../sanity/lib/image';
+import {
+  type Listing,
+  type ListingDetail,
+  LISTING_FIELDS,
+  formatPrice,
+  detailDisplay,
+  categoryLabel,
+  iconSvg,
+  isLowerBetter,
+} from '../lib/listing';
+
+const REPO = 'https://github.com/alex-boop-chasey/astro-listings-demo';
+
+// Parse ?ids=a,b,c — trim, drop blanks, dedupe, cap at 4.
+const idsParam = Astro.url.searchParams.get('ids') ?? '';
+const ids = [
+  ...new Set(
+    idsParam
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  ),
+].slice(0, 4);
+
+let listings: Listing[] = [];
+if (ids.length > 0) {
+  const fetched = await client.fetch<Listing[]>(
+    `*[_type == "listing" && _id in $ids]{ ${LISTING_FIELDS} }`,
+    { ids },
+  );
+  // Preserve the order given in the URL (GROQ `in` doesn't guarantee it).
+  const byId = new Map(fetched.map((l) => [l._id, l]));
+  listings = ids.map((id) => byId.get(id)).filter((l): l is Listing => Boolean(l));
+}
+
+const hasListings = listings.length > 0;
+
+// Union of detail labels across all listings, in first-appearance order.
+const labels: string[] = [];
+for (const l of listings) {
+  for (const d of l.details ?? []) {
+    if (!labels.includes(d.label)) labels.push(d.label);
+  }
+}
+
+const detailFor = (l: Listing, label: string): ListingDetail | undefined =>
+  (l.details ?? []).find((d) => d.label === label);
+
+// Which columns win a numeric row? Returns a Set of column indexes, or null when
+// the row isn't comparable (any value missing, mixed units, or everyone ties).
+function winners(
+  values: (number | null)[],
+  units: (string | undefined)[],
+  lowerBetter: boolean,
+): Set<number> | null {
+  if (values.length < 2 || values.some((v) => v == null)) return null;
+  const unit0 = units[0];
+  if (!units.every((u) => u === unit0)) return null;
+  const nums = values as number[];
+  const best = lowerBetter ? Math.min(...nums) : Math.max(...nums);
+  const set = new Set<number>();
+  nums.forEach((n, i) => {
+    if (n === best) set.add(i);
+  });
+  return set.size === nums.length ? null : set; // no highlight if all tie
+}
+
+// Price is a first-class numeric row (lower wins).
+const priceWinners = winners(
+  listings.map((l) => l.price ?? null),
+  listings.map(() => 'currency'),
+  true,
+);
+
+const heroFor = (l: Listing) =>
+  l.images?.[0]
+    ? urlFor(l.images[0]).width(480).height(300).fit('crop').auto('format').url()
+    : null;
+
+const winCell = 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200';
+
+const title = 'Compare listings — astro-listings';
+const description = 'Compare listings side by side.';
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content="noindex" />
+  </head>
+  <body class="min-h-screen bg-slate-50 text-slate-800 antialiased text-[15px] leading-relaxed">
+    <div class="mx-auto max-w-7xl px-6">
+      <!-- Header -->
+      <header class="flex items-center justify-between py-6">
+        <a href="/" class="text-base font-semibold tracking-tight text-slate-900">
+          astro<span class="text-slate-400">-listings</span>
+        </a>
+        <a
+          href="/"
+          class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition hover:text-slate-900"
+        >
+          <Fragment set:html={iconSvg('arrowLeft', 'h-3.5 w-3.5')} />
+          Back to listings
+        </a>
+      </header>
+
+      <main id="main-content" class="pb-24">
+        <h1 class="text-3xl font-bold tracking-tight text-slate-900">Compare listings</h1>
+
+        {
+          hasListings ? (
+            <>
+              <p class="mt-2 text-sm text-slate-500">
+                {listings.length} listing{listings.length === 1 ? '' : 's'} · best value in each
+                comparable row is highlighted.
+              </p>
+
+              <div class="mt-8 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <table class="w-full min-w-[640px] border-collapse text-sm">
+                  {/* Hero images as column headers */}
+                  <thead>
+                    <tr>
+                      <th class="w-40 border-b border-slate-200 p-4" />
+                      {listings.map((l) => {
+                        const hero = heroFor(l);
+                        return (
+                          <th class="border-b border-l border-slate-200 p-4 align-bottom">
+                            <a href={`/listings/${l.slug?.current ?? ''}`} class="block">
+                              <div class="aspect-video w-full overflow-hidden rounded-xl bg-slate-100">
+                                {hero ? (
+                                  <img src={hero} alt={l.title} class="h-full w-full object-cover" />
+                                ) : (
+                                  <div class="flex h-full w-full items-center justify-center text-slate-300">
+                                    <Fragment set:html={iconSvg('image', 'h-8 w-8')} />
+                                  </div>
+                                )}
+                              </div>
+                            </a>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {/* Title */}
+                    <tr>
+                      <th
+                        scope="row"
+                        class="border-b border-slate-100 p-4 text-left align-top text-xs font-semibold uppercase tracking-wide text-slate-400"
+                      >
+                        Listing
+                      </th>
+                      {listings.map((l) => (
+                        <td class="border-b border-l border-slate-100 p-4 align-top">
+                          <a
+                            href={`/listings/${l.slug?.current ?? ''}`}
+                            class="font-semibold text-slate-900 transition hover:text-slate-600"
+                          >
+                            {l.title}
+                          </a>
+                          <div class="mt-1 text-xs text-slate-500">{categoryLabel(l.category)}</div>
+                        </td>
+                      ))}
+                    </tr>
+
+                    {/* Price */}
+                    <tr>
+                      <th
+                        scope="row"
+                        class="border-b border-slate-100 p-4 text-left align-top text-xs font-semibold uppercase tracking-wide text-slate-400"
+                      >
+                        Price
+                      </th>
+                      {listings.map((l, i) => (
+                        <td
+                          class:list={[
+                            'border-b border-l border-slate-100 p-4 align-top text-lg font-bold text-slate-900',
+                            priceWinners?.has(i) && winCell,
+                          ]}
+                        >
+                          {formatPrice(l.price, l.currency)}
+                        </td>
+                      ))}
+                    </tr>
+
+                    {/* One row per unique detail label */}
+                    {labels.map((label) => {
+                      const cells = listings.map((l) => detailFor(l, label));
+                      const nums = cells.map((d) =>
+                        d && d.valueType === 'number' && d.valueNumber != null ? d.valueNumber : null,
+                      );
+                      const units = cells.map((d) => d?.unit);
+                      const win = winners(nums, units, isLowerBetter(label));
+                      return (
+                        <tr>
+                          <th
+                            scope="row"
+                            class="border-b border-slate-100 p-4 text-left align-top text-xs font-semibold uppercase tracking-wide text-slate-400"
+                          >
+                            {label}
+                          </th>
+                          {cells.map((d, i) => (
+                            <td
+                              class:list={[
+                                'border-b border-l border-slate-100 p-4 align-top text-slate-700',
+                                win?.has(i) && `${winCell} font-semibold`,
+                              ]}
+                            >
+                              {d ? detailDisplay(d) : <span class="text-slate-300">—</span>}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            /* Empty state */
+            <div class="mt-8 rounded-2xl border border-slate-200 bg-white px-6 py-16 text-center">
+              <div class="mx-auto mb-4 flex w-fit justify-center text-slate-300">
+                <Fragment set:html={iconSvg('image', 'h-10 w-10')} />
+              </div>
+              <h2 class="text-lg font-semibold text-slate-900">Nothing to compare yet</h2>
+              <p class="mt-1 text-sm text-slate-500">
+                Add a couple of listings using the “Compare” button on any card.
+              </p>
+              <a
+                href="/"
+                class="mt-6 inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-700"
+              >
+                Browse listings
+                <Fragment set:html={iconSvg('arrow', 'h-3.5 w-3.5')} />
+              </a>
+            </div>
+          )
+        }
+      </main>
+
+      <!-- Footer -->
+      <footer class="mt-24 border-t border-slate-200 py-8 text-center text-sm text-slate-500">
+        Built with Astro, Tailwind and Sanity ·
+        <a href={REPO} target="_blank" rel="noopener noreferrer" class="underline transition hover:text-slate-900">
+          View on GitHub
+        </a>
+      </footer>
+    </div>
+  </body>
+</html>

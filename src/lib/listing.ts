@@ -142,3 +142,12 @@ export function categoryIconName(category: string): string {
   if (c.includes('real') || c.includes('estate') || c.includes('propert')) return 'building';
   return 'image';
 }
+
+// --- Comparison winner heuristic (hardcoded for the demo) --------------------
+// For a numeric comparison row, is a lower value the "winner"? Odometer, price
+// and kilometres favour lower; everything else (bedrooms, land size, …) defaults
+// to higher-is-better.
+export function isLowerBetter(label: string): boolean {
+  const l = (label ?? '').toLowerCase();
+  return ['odometer', 'price', 'kilometre', 'mileage'].some((k) => l.includes(k));
+}

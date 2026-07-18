@@ -65,6 +65,24 @@ const status = statusConfig[listing.status] ?? statusConfig.draft;
       {status.label}
     </span>
 
+    {/* Add-to-compare toggle. All behaviour is handled by CompareTray's
+        delegated listener (this card root is an <a>, so the handler calls
+        preventDefault). data-* carries everything the tray needs. */}
+    <button
+      type="button"
+      data-compare-toggle
+      data-id={listing._id}
+      data-category={listing.category}
+      data-title={listing.title}
+      data-thumb={heroUrl ?? ''}
+      aria-pressed="false"
+      aria-label="Add to compare"
+      class="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-slate-700 shadow ring-1 ring-inset ring-slate-200 backdrop-blur transition hover:bg-white aria-pressed:bg-slate-900 aria-pressed:text-white aria-pressed:ring-slate-900 disabled:cursor-not-allowed disabled:opacity-50 disabled:pointer-events-none"
+    >
+      <span data-compare-icon class="inline-flex"><Fragment set:html={svg('check', 'h-3.5 w-3.5')} /></span>
+      <span data-compare-label>Compare</span>
+    </button>
+
     {/* SOLD banner */}
     {
       listing.status === 'sold' && (
