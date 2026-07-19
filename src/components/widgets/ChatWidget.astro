@@ -1154,28 +1154,55 @@ const turnstileSiteKey = turnstileEnabled ? TURNSTILE_SITE_KEY : '';
       const recog: any = new SR();
       recog.lang = 'en-AU';
       recog.interimResults = true;
-      recog.continuous = false;
+      recog.continuous = true; // keep listening across pauses until the visitor taps off
 
-      let recognizing = false;
+      // `listening` is the visitor's intent (mic on until they tap off / panel
+      // closes / form submits); `starting` guards the async start() gap. The
+      // recording visual follows `listening`, so it stays lit through pauses and
+      // keep-alive restarts — never flickering while the visitor gathers a thought.
+      let listening = false;
       let starting = false;
       let micBase = '';
+      let lastRestart = 0;
       const setRec = (on: boolean) => micBtn.classList.toggle('reb-recording', on);
 
-      stopDictation = () => {
-        if (recognizing || starting) {
-          try { recog.stop(); } catch { /* ignore */ }
-        }
+      const startRecog = () => {
+        if (starting) return; // guard against a double-start while starting
+        starting = true;
+        try { recog.start(); } catch { starting = false; }
       };
 
-      recog.onstart = () => { starting = false; recognizing = true; setRec(true); };
-      recog.onend = () => { starting = false; recognizing = false; setRec(false); };
+      stopDictation = () => {
+        if (!listening && !starting) return;
+        listening = false; // clear intent first so onend won't keep-alive restart
+        setRec(false);
+        try { recog.stop(); } catch { /* ignore */ }
+      };
+
+      recog.onstart = () => { starting = false; };
+      recog.onend = () => {
+        starting = false;
+        // Keep-alive: continuous recognition still ends on Chrome's ~60s silent
+        // socket drop (and some pauses). Restart if the visitor hasn't tapped off
+        // and the panel's still open — a storm guard bails if it just restarted.
+        if (listening && !panel.hidden) {
+          const now = performance.now();
+          if (now - lastRestart < 1000) { listening = false; setRec(false); return; }
+          lastRestart = now;
+          micBase = input.value; // fold the transcript so far into the base (new session starts fresh)
+          startRecog();
+          return;
+        }
+        setRec(false);
+      };
       recog.onerror = async (e: any) => {
-        // Distinguish the failure modes so the notice never lies. 'no-speech' and
-        // 'aborted' are expected/benign and stay silent (onend resets the UI).
+        // 'no-speech' / 'aborted' are expected/benign and stay silent — onend's
+        // keep-alive decides whether to resume. Terminal errors clear `listening`
+        // so onend won't restart into a failure loop, and surface a precise notice.
+        if (e.error === 'no-speech' || e.error === 'aborted') return;
+        listening = false;
+        setRec(false);
         switch (e.error) {
-          case 'no-speech':
-          case 'aborted':
-            return;
           case 'not-allowed': {
             // A persisted block vs. a one-off start failure read differently.
             let denied = false;
@@ -1207,11 +1234,11 @@ const turnstileSiteKey = turnstileEnabled ? TURNSTILE_SITE_KEY : '';
       };
 
       micBtn.addEventListener('click', () => {
-        if (recognizing) { stopDictation(); return; } // tap-to-stop keeps the transcript
-        if (starting) return; // guard against a double-tap while starting
+        if (listening || starting) { stopDictation(); return; } // tap-to-stop keeps the transcript
         micBase = input.value; // dictation appends to whatever's already typed
-        starting = true;
-        try { recog.start(); } catch { starting = false; }
+        listening = true;
+        setRec(true);
+        startRecog();
       });
 
       micBtn.hidden = false; // reveal only where the API exists
