@@ -71,11 +71,11 @@ export const SESSION_STALE_SECONDS = 24 * 60 * 60; // 24 hours
 // — so local dev isn't blocked while production stays protected. Flip this to
 // `false` if you ever need to kill the gate entirely.
 export const TURNSTILE_ENABLED = true;
-// TODO: provision a NEW Cloudflare Turnstile widget for the demo domain and paste
-// its public site key here (the old Rebirth key only allows the live rebirth
-// hostname, so it will not render on this demo). Turnstile is auto-bypassed on
-// localhost, so local dev works with this placeholder.
-export const TURNSTILE_SITE_KEY = 'REPLACE_ME';
+// Public Turnstile site key for the demo domain. Safe to bake into the page at
+// build time — the site key is public by design; the matching secret key lives
+// in the Worker env as CHATBOT_TURNSTILE_SECRET_KEY. Turnstile is auto-bypassed
+// on localhost, so local dev works regardless.
+export const TURNSTILE_SITE_KEY = '0x4AAAAAAD43gnB_V8uRCL6w';
 
 // Per-IP rate limiting. Requires a Cloudflare KV namespace bound as RATE_LIMIT_KV
 // (see chatbot/README.md). If the binding is absent (e.g. local dev without KV),
