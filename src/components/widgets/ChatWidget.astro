@@ -78,7 +78,7 @@ const turnstileSiteKey = turnstileEnabled ? TURNSTILE_SITE_KEY : '';
 
     {turnstileEnabled && (
       <div id="reb-turnstile" class="reb-turnstile" hidden>
-        <div class="cf-turnstile" data-sitekey={turnstileSiteKey} data-theme="dark" data-size="flexible"></div>
+        <div class="cf-turnstile" data-sitekey={turnstileSiteKey} data-theme="dark" data-size="flexible" data-callback="rebTurnstileVerified" data-expired-callback="rebTurnstileExpired"></div>
       </div>
     )}
 
@@ -575,6 +575,16 @@ const turnstileSiteKey = turnstileEnabled ? TURNSTILE_SITE_KEY : '';
       s.defer = true;
       document.head.appendChild(s);
     };
+    // Implicit-render callbacks (referenced by data-callback / data-expired-callback
+    // on the .cf-turnstile div): tuck the box away once a token is issued, and
+    // bring it back if the token expires before the first message is sent.
+    (window as unknown as Record<string, unknown>).rebTurnstileVerified = () => {
+      if (turnstileBox) turnstileBox.hidden = true;
+    };
+    (window as unknown as Record<string, unknown>).rebTurnstileExpired = () => {
+      // The token only gates the first message — once a session exists, stay hidden.
+      if (!sessionId && turnstileBox) turnstileBox.hidden = false;
+    };
 
     const pollUrl = (after: number) => `/api/chat-poll?sessionId=${encodeURIComponent(sessionId || '')}&afterId=${after}`;
 
@@ -860,6 +870,7 @@ const turnstileSiteKey = turnstileEnabled ? TURNSTILE_SITE_KEY : '';
       // First message + Turnstile enabled but no token yet → nudge and wait.
       if (TURNSTILE_KEY && !sessionId && !getTurnstileToken()) {
         ensureTurnstile();
+        if (turnstileBox) turnstileBox.hidden = false; // re-show if hidden (e.g. expired token)
         addSystem('Please complete the quick verification above, then send again.');
         return;
       }
